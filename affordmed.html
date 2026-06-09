@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Campus Notifications</title>
+  <style>
+    body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  background: #f9f9f9;
+}
+
+.container {
+  max-width: 900px;
+  margin: auto;
+  padding: 20px;
+}
+
+h1, h2 {
+  color: #333;
+}
+
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 15px;
+  flex: 1 1 calc(50% - 20px);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.card.viewed {
+  background: #f0f0f0;
+}
+
+.controls, .filters {
+  margin-top: 20px;
+}
+
+button {
+  margin: 5px;
+  padding: 8px 12px;
+  border: none;
+  background: #1976d2;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+button:disabled {
+  background: #aaa;
+  cursor: not-allowed;
+}
+
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Campus Notifications</h1>
+
+    <h2>Priority Inbox</h2>
+    <div id="priorityInbox" class="grid"></div>
+
+    <h2>All Notifications</h2>
+    <div id="notifications" class="grid"></div>
+
+    <div class="controls">
+      <button id="prevPage">Previous</button>
+      <button id="nextPage">Next</button>
+    </div>
+
+    <div class="filters">
+      <button onclick="applyFilter('Placement')">Filter Placement</button>
+      <button onclick="applyFilter('Result')">Filter Result</button>
+      <button onclick="applyFilter('Event')">Filter Event</button>
+      <button onclick="applyFilter(null)">Clear Filter</button>
+    </div>
+  </div>
+
+  <script >
+    // Logging middleware
+function logger(message, data = null) {
+  const timestamp = new Date().toISOString();
+  console.log(`[LOG] ${timestamp} - ${message}`, data ? data : "");
+}
+
+let notifications = [];
+let priority = [];
+let currentPage = 1;
+const pageSize = 6;
+let filterType = null;
+
+// Fetch notifications
+async function fetchNotifications() {
+  logger("Fetching notifications...");
+  try {
+    const res = await fetch("https://api.affordmed-campus.com/notifications");
+    let data = await res.json();
+
+    logger("Fetched notifications", data);
+
+    // Apply filter
+    if (filterType) {
+      data = data.filter(n => n.type === filterType);
+      logger(`Applied filter: ${filterType}`, data);
+    }
+
+    notifications = data;
+    computePriorityInbox();
+    renderNotifications();
+  } catch (err) {
+    logger("Error fetching notifications", err.message);
+  }
+}
+
+// Compute priority inbox
+function computePriorityInbox() {
+  const weights = { Placement: 3, Result: 2, Event: 1 };
+  priority = notifications
+    .filter(n => !n.viewed)
+    .map(n => ({
+      ...n,
+      score: (weights[n.type] || 0) * 10000000000 + new Date(n.timestamp).getTime(),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10);
+
+  logger("Priority inbox computed", priority);
+  renderPriorityInbox();
+}
+
+// Render priority inbox
+function renderPriorityInbox() {
+  const container = document.getElementById("priorityInbox");
+  container.innerHTML = "";
+  priority.forEach(n => {
+    const card = document.createElement("div");
+    card.className = `card ${n.viewed ? "viewed" : ""}`;
+    card.innerHTML = `<h3>${n.type}</h3><p>${n.message}</p>`;
+    container.appendChild(card);
+  });
+}
+
+// Render all notifications with pagination
+function renderNotifications() {
+  const container = document.getElementById("notifications");
+  container.innerHTML = "";
+
+  const startIndex = (currentPage - 1) * pageSize;
+  const paginated = notifications.slice(startIndex, startIndex + pageSize);
+
+  paginated.forEach(n => {
+    const card = document.createElement("div");
+    card.className = `card ${n.viewed ? "viewed" : ""}`;
+    card.innerHTML = `<h3>${n.type}</h3><p>${n.message}</p>`;
+    container.appendChild(card);
+  });
+
+  document.getElementById("prevPage").disabled = currentPage <= 1;
+  document.getElementById("nextPage").disabled = startIndex + pageSize >= notifications.length;
+}
+
+// Pagination controls
+document.getElementById("prevPage").addEventListener("click", () => {
+  if (currentPage > 1) {
+    currentPage--;
+    renderNotifications();
+  }
+});
+
+document.getElementById("nextPage").addEventListener("click", () => {
+  if ((currentPage * pageSize) < notifications.length) {
+    currentPage++;
+    renderNotifications();
+  }
+});
+
+// Filter controls
+function applyFilter(type) {
+  filterType = type;
+  currentPage = 1;
+  fetchNotifications();
+}
+
+// Initial load
+fetchNotifications();
+
+  </script>
+</body>
+</html>
